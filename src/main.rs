@@ -6,7 +6,7 @@ use pie_menu::{Color, Item, PieMenu, Style};
 use std::convert::Into;
 use windows::Win32::UI::Input::KeyboardAndMouse::{self, VIRTUAL_KEY};
 use windows::Win32::UI::WindowsAndMessaging::{
-    KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    KBDLLHOOKSTRUCT, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP,
 };
 use windows::{
     core::Result,
@@ -38,6 +38,9 @@ extern "system" fn wndproc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPA
     }
 }
 
+pub static IS_CTRL_DOWN: once_cell::sync::Lazy<Mutex<bool>> = once_cell::sync::Lazy::new(|| Mutex::new(false));
+pub static IS_ALT_DOWN: once_cell::sync::Lazy<Mutex<bool>> = once_cell::sync::Lazy::new(|| Mutex::new(false));
+
 unsafe extern "system" fn low_level_keyboard_proc(
     code: i32,
     wparam: WPARAM,
@@ -50,15 +53,20 @@ unsafe extern "system" fn low_level_keyboard_proc(
     let hook_lparam = *(lparam.0 as *const KBDLLHOOKSTRUCT);
 
     let mut handled = false;
+    let keycode = VIRTUAL_KEY(hook_lparam.vkCode as u16);
 
     if wparam.0 as u32 == WM_KEYDOWN || wparam.0 as u32 == WM_SYSKEYDOWN {
-        let alt_down = (hook_lparam.flags & LLKHF_ALTDOWN).0 != 0;
-        let keycode = VIRTUAL_KEY(hook_lparam.vkCode as u16);
+        if keycode == KeyboardAndMouse::VK_LMENU {
+            *IS_ALT_DOWN.lock() = true;
+        }
+        if keycode == KeyboardAndMouse::VK_LCONTROL {
+            *IS_CTRL_DOWN.lock() = true;
+        }
 
-        if alt_down {
+        if *IS_ALT_DOWN.lock() && *IS_CTRL_DOWN.lock() {
             if let Some(ref mut active_pie_menu) = *ACTIVE_PIE_MENU.lock() {
                 handled = match keycode {
-                    KeyboardAndMouse::VK_P => {
+                    KeyboardAndMouse::VK_Q => {
                         if let Err(err) = active_pie_menu.show() {
                             eprintln!("couldn't show pie menu `{err}`");
                         }
@@ -67,6 +75,14 @@ unsafe extern "system" fn low_level_keyboard_proc(
                     _ => false,
                 };
             }
+        }
+    } 
+    if wparam.0 as u32 == WM_KEYUP || wparam.0 as u32 == WM_SYSKEYUP {
+        if keycode == KeyboardAndMouse::VK_LMENU {
+            *IS_ALT_DOWN.lock() = false;
+        }
+        if keycode == KeyboardAndMouse::VK_LCONTROL {
+            *IS_CTRL_DOWN.lock() = false;
         }
     }
 

@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
+use windows::Win32::Graphics::Gdi::DKGRAY_BRUSH;
 use std::convert::Into;
 use vecmath::Vector2;
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::UI::WindowsAndMessaging::{DestroyWindow, ShowWindow, HHOOK, SW_SHOW};
+use windows::Win32::UI::WindowsAndMessaging::{DestroyWindow, ShowWindow, HHOOK, SW_SHOW, WM_LBUTTONDOWN};
 use windows::{
     core::{w, PCWSTR},
     Win32::{
@@ -10,7 +11,7 @@ use windows::{
         Graphics::Gdi::{
             self, BeginPaint, ClientToScreen, DrawTextExW, EndPaint, GetStockObject, SelectObject,
             SetBkMode, SetTextColor, BACKGROUND_MODE, DT_CENTER, DT_SINGLELINE, DT_VCENTER, HBRUSH,
-            PAINTSTRUCT, WHITE_BRUSH,
+            PAINTSTRUCT
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
@@ -27,6 +28,7 @@ use crate::ACTIVE_PIE_MENU;
 
 pub enum Color {
     Black = 0x00000000,
+    White = 0x00FFFFFF,
     PolycountGray = 0x00202020,
 }
 
@@ -101,6 +103,13 @@ unsafe extern "system" fn low_level_mouse_proc(
                 }
             }
         }
+    } else if  wparam.0 as u32 == WM_LBUTTONDOWN {
+        if let Some(ref active_pie_menu) = *ACTIVE_PIE_MENU.lock() {
+            if let Err(err) = active_pie_menu.close() {
+                eprintln!("{err}");
+            }
+            return LRESULT(-1);
+        }
     }
 
     CallNextHookEx(None, code, wparam, lparam)
@@ -154,8 +163,8 @@ impl PieMenu {
         let mut rect = RECT::default();
         GetClientRect(hwnd, &mut rect).unwrap();
 
-        let hbr_old = SelectObject(hdc, GetStockObject(WHITE_BRUSH));
-        SetTextColor(hdc, Into::<COLORREF>::into(Color::PolycountGray));
+        let hbr_old = SelectObject(hdc, GetStockObject(DKGRAY_BRUSH));
+        SetTextColor(hdc, Into::<COLORREF>::into(Color::White));
         SetBkMode(hdc, BACKGROUND_MODE(0));
 
         let mut theta = 0f32;
